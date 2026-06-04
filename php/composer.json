@@ -1,0 +1,17 @@
+{
+  "name": "hacs/hacs",
+  "description": "Hierarchical Authorization Capability System helpers for PHP.",
+  "type": "library",
+  "license": "MIT",
+  "autoload": {
+    "psr-4": {
+      "HACS\\": "src/"
+    }
+  },
+  "scripts": {
+    "test": "php tests/HACSTest.php"
+  },
+  "require": {
+    "php": ">=8.1"
+  }
+}
