@@ -1,6 +1,6 @@
 {
-  "name": "hacs",
-  "version": "0.1.0",
+  "name": "@dosmike/hacs",
+  "version": "1.0.0",
   "description": "Hierarchical Authorization Capability System for TypeScript and React.",
   "type": "module",
   "license": "MIT",
@@ -48,5 +48,14 @@
     "typescript-eslint": "^8.60.1",
     "vitest": "^4.1.8"
   },
-  "packageManager": "npm@12.0.0-pre.0.0+sha512.42a81f7586d8cc6530fd5360eef4c2e6e99132bf5cd46750b7c4388706fd134c5c3a7fa7a6c94bb081d448ca67381914b65ed2e4ce2afb69f70bf0dcba893be5"
+  "packageManager": "npm@12.0.0-pre.0.0+sha512.42a81f7586d8cc6530fd5360eef4c2e6e99132bf5cd46750b7c4388706fd134c5c3a7fa7a6c94bb081d448ca67381914b65ed2e4ce2afb69f70bf0dcba893be5",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DosMike/HACS.git",
+    "directory": "nodejs"
+  },
+  "bugs": {
+    "url": "https://github.com/DosMike/HACS/issues"
+  },
+  "homepage": "https://github.com/DosMike/HACS/tree/main/nodejs"
 }
