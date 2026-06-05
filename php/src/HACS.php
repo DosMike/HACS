@@ -1,4 +1,8 @@
 <?php
+/**
+ * github.com/DosMike/HACS
+ * v1.1.0
+ */
 
 declare(strict_types=1);
 
@@ -8,74 +12,63 @@ use InvalidArgumentException;
 
 final class HACS
 {
-    private const PERMISSION_PATTERN = '/^(?:\*|[a-zA-Z0-9]+(?:\.[a-zA-Z0-9]+)*)$/';
+    private const PERMISSION_PATTERN = '/^[a-zA-Z0-9]+(?:\.[a-zA-Z0-9]+)*$/';
+    private const PERMISSION_GRANT_PATTERN = '/^(?:\*|[a-zA-Z0-9]+(?:\.[a-zA-Z0-9]+)*)$/';
 
-    private function __construct()
-    {
-    }
+    /** @var array<string, string> */
+    private array $grants = [];
 
-    public static function permissionKey(string $value): string
+    /**
+     * @param array<string, string|bool|null> $grants
+     */
+    public function __construct(array $grants = [])
     {
-        return self::normalizePermission($value);
-    }
-
-    public static function makePermission(string $value): string
-    {
-        return self::normalizePermission($value);
+        $this->addGrants($grants);
     }
 
     /**
      * @param array<string, string|bool|null> $grants
-     * @return array<string, string>
-     */
-    public static function permissionGrant(array $grants): array
-    {
-        $normalizedGrants = [];
-
-        foreach ($grants as $key => $value) {
-            if ($value === null) {
-                continue;
-            }
-
-            $normalizedGrants[self::normalizeGrantKey((string) $key)] = self::normalizeGrantValue($value);
-        }
-
-        return $normalizedGrants;
-    }
-
-    /**
-     * @param array<string, string|bool|null> $grants
-     * @return array<string, string>
-     */
-    public static function defineGrants(array $grants): array
-    {
-        return self::permissionGrant($grants);
-    }
-
-    /**
-     * @param array<string, string|bool|null>|list<array<string, string|bool|null>> $grants
      */
     public static function test(array $grants, string $permission): bool
     {
-        $match = self::resolvePermission($grants, $permission);
+        return (new self($grants))->can($permission);
+    }
+
+    /**
+     * Adds a grant set to the loaded in-memory grants.
+     *
+     * Exact-key grants from this set override earlier exact-key grants. `inherit`
+     * is intentionally ignored during load, so it cannot erase a previously
+     * loaded explicit allow or deny.
+     *
+     * @param array<string, string|bool|null> $grants
+     */
+    public function addGrants(array $grants): self
+    {
+        foreach ($grants as $key => $value) {
+            $normalizedKey = self::normalizeGrantKey((string) $key);
+            $normalizedValue = self::normalizeGrantValue($value);
+
+            if ($normalizedValue === 'inherit') {
+                continue;
+            }
+
+            $this->grants[$normalizedKey] = $normalizedValue;
+        }
+
+        return $this;
+    }
+
+    public function can(string $permission): bool
+    {
+        $match = $this->resolvePermission($permission);
 
         return $match !== null && $match['value'] === 'allow';
     }
 
-    /**
-     * @param array<string, string|bool|null>|list<array<string, string|bool|null>> $grants
-     */
-    public static function can(array $grants, string $permission): bool
+    public function explain(string $permission): string
     {
-        return self::test($grants, $permission);
-    }
-
-    /**
-     * @param array<string, string|bool|null>|list<array<string, string|bool|null>> $grants
-     */
-    public static function explain(array $grants, string $permission): string
-    {
-        $explanation = self::explainPermission($grants, $permission);
+        $explanation = $this->explainPermission($permission);
 
         if ($explanation['matched'] !== null) {
             $state = $explanation['allowed'] ? 'allowed' : 'denied';
@@ -98,7 +91,6 @@ final class HACS
     }
 
     /**
-     * @param array<string, string|bool|null>|list<array<string, string|bool|null>> $grants
      * @return array{
      *   allowed: bool,
      *   permission: string,
@@ -107,11 +99,11 @@ final class HACS
      *   reason: string
      * }
      */
-    public static function explainPermission(array $grants, string $permission): array
+    public function explainPermission(string $permission): array
     {
         $normalizedPermission = self::normalizePermission($permission);
-        $considered = self::getMatchingGrants($grants, $normalizedPermission);
-        $matched = $considered === [] ? null : $considered[array_key_last($considered)];
+        $considered = $this->getMatchingGrants($normalizedPermission);
+        $matched = empty($considered) ? null : $considered[array_key_last($considered)];
 
         return [
             'allowed' => $matched !== null && $matched['value'] === 'allow',
@@ -125,67 +117,63 @@ final class HACS
     }
 
     /**
-     * @param array<string, string|bool|null>|list<array<string, string|bool|null>> $grants
      * @return array{key: string, value: string}|null
      */
-    public static function resolvePermission(array $grants, string $permission): ?array
+    public function resolvePermission(string $permission): ?array
     {
         $normalizedPermission = self::normalizePermission($permission);
-        $considered = self::getMatchingGrants($grants, $normalizedPermission);
+        $considered = $this->getMatchingGrants($normalizedPermission);
 
-        return $considered === [] ? null : $considered[array_key_last($considered)];
+        return empty($considered) ? null : $considered[array_key_last($considered)];
     }
 
     /**
-     * @param array<string, string|bool|null>|list<array<string, string|bool|null>> $grants
-     * @return list<array{key: string, value: string}>
+     * @return array<string, string>
      */
-    private static function getMatchingGrants(array $grants, string $permission): array
+    public function grants(): array
     {
-        $matches = array_values(array_filter(
-            self::flattenGrants($grants),
-            static function (array $grant) use ($permission): bool {
-                if ($grant['value'] === 'inherit') {
-                    return false;
-                }
-
-                return $grant['key'] === '*'
-                    || $permission === $grant['key']
-                    || str_starts_with($permission, $grant['key'] . '.');
-            },
-        ));
-
-        usort(
-            $matches,
-            static fn (array $left, array $right): int => self::specificity($left['key']) <=> self::specificity($right['key']),
-        );
-
-        return $matches;
+        return $this->grants;
     }
 
     /**
-     * @param array<string, string|bool|null>|list<array<string, string|bool|null>> $grants
      * @return list<array{key: string, value: string}>
      */
-    private static function flattenGrants(array $grants): array
+    private function getMatchingGrants(string $permission): array
     {
-        $grantList = self::isGrantList($grants) ? $grants : [$grants];
         $matches = [];
 
-        foreach ($grantList as $grantSet) {
-            foreach ($grantSet as $key => $value) {
-                if ($value === null) {
-                    continue;
-                }
-
+        foreach ($this->candidateKeys($permission) as $key) {
+            if (array_key_exists($key, $this->grants)) {
                 $matches[] = [
-                    'key' => self::normalizeGrantKey((string) $key),
-                    'value' => self::normalizeGrantValue($value),
+                    'key' => $key,
+                    'value' => $this->grants[$key],
                 ];
             }
         }
 
         return $matches;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function candidateKeys(string $permission): array
+    {
+        $keys = ['*'];
+
+        if ($permission === '*') {
+            return $keys;
+        }
+
+        $segments = explode('.', $permission);
+        $current = [];
+
+        foreach ($segments as $segment) {
+            $current[] = $segment;
+            $keys[] = implode('.', $current);
+        }
+
+        return $keys;
     }
 
     private static function normalizePermission(string $permission): string
@@ -201,9 +189,9 @@ final class HACS
 
     private static function normalizeGrantKey(string $key): string
     {
-        if (preg_match(self::PERMISSION_PATTERN, $key) !== 1) {
+        if (preg_match(self::PERMISSION_GRANT_PATTERN, $key) !== 1) {
             throw new InvalidArgumentException(
-                sprintf('Permission grant key must match %s: %s.', self::PERMISSION_PATTERN, json_encode($key)),
+                sprintf('Permission grant key must match %s: %s.', self::PERMISSION_GRANT_PATTERN, json_encode($key)),
             );
         }
 
@@ -212,39 +200,15 @@ final class HACS
 
     private static function normalizeGrantValue(mixed $value): string
     {
-        if ($value === true) {
+        if ($value === null) {
+            return 'inherit';
+        } elseif ($value === true) {
             return 'allow';
-        }
-
-        if ($value === false) {
+        } elseif ($value === false) {
             return 'deny';
-        }
-
-        if ($value !== 'allow' && $value !== 'deny' && $value !== 'inherit') {
+        } elseif ($value !== 'allow' && $value !== 'deny' && $value !== 'inherit') {
             throw new InvalidArgumentException(sprintf('Invalid permission grant value: %s.', (string) $value));
         }
-
         return $value;
-    }
-
-    private static function specificity(string $key): int
-    {
-        if ($key === '*') {
-            return -1;
-        }
-
-        return substr_count($key, '.') + 1;
-    }
-
-    /**
-     * @param array<mixed> $grants
-     */
-    private static function isGrantList(array $grants): bool
-    {
-        if ($grants === []) {
-            return false;
-        }
-
-        return array_is_list($grants) && is_array($grants[0]);
     }
 }

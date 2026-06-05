@@ -4,52 +4,54 @@ Hierarchical Authorization Capability helpers for PHP.
 
 ## Install
 
-```sh
-composer require hacs/hacs
-```
+copy HACS.php
 
 ## Usage
 
 ```php
 use HACS\HACS;
 
-$grants = HACS::defineGrants([
+$hacs = new HACS([
     'project' => 'allow',
     'project.delete' => 'deny',
     'project.delete.owner' => 'allow',
 ]);
 
-HACS::test($grants, HACS::makePermission('project.delete.owner')); // true
-HACS::test($grants, HACS::makePermission('project.delete.member')); // false
+$hacs->can('project.delete.owner'); // true
+$hacs->can('project.delete.member'); // false
 ```
 
 Grant values can be `allow`, `deny`, or `inherit`. Boolean aliases are accepted:
-`true` is `allow`, and `false` is `deny`.
+`true` is `allow`, and `false` is `deny` and `null` is `inherit`.
+This should simplify reading grants from other tri-state stores, like nullable DB columns.
 
-Grant sets can be passed as a single associative array or as a list of grant sets:
+Additional grant sets can be loaded into the same instance:
 
 ```php
-$grants = [
-    HACS::defineGrants(['project' => 'allow', 'project.delete' => 'deny']),
-    HACS::defineGrants(['project.delete' => 'allow']),
-];
+$hacs = new HACS(['project' => 'allow', 'project.delete' => 'deny']);
+$hacs->addGrantSet(['project.delete' => 'allow']);
+
+$hacs->can('project.delete'); // true
 ```
 
-The most specific matching grant wins. Later same-specificity grants override
-earlier grants because PHP's stable sort preserves insertion order for equal
-specificity.
+The most specific matching grant wins. When a loaded grant set contains an exact
+key that already exists, the new value overrides the previous value unless the
+new value is `inherit`. `inherit` is ignored while loading so it cannot erase an
+earlier explicit `allow` or `deny`.
+
+`HACS::test($grants, $permission)` remains as a convenience for checking a
+single grant set without manually creating an instance.
 
 ## API
 
-- `HACS::permissionKey(string $value): string`
-- `HACS::makePermission(string $value): string`
-- `HACS::defineGrants(array $grants): array`
-- `HACS::permissionGrant(array $grants): array`
 - `HACS::test(array $grants, string $permission): bool`
-- `HACS::can(array $grants, string $permission): bool`
-- `HACS::resolvePermission(array $grants, string $permission): ?array`
-- `HACS::explain(array $grants, string $permission): string`
-- `HACS::explainPermission(array $grants, string $permission): array`
+- `new HACS(array $grants = [])`
+- `$hacs->addGrants(array $grants): HACS`
+- `$hacs->can(string $permission): bool`
+- `$hacs->resolvePermission(string $permission): ?array`
+- `$hacs->explain(string $permission): string`
+- `$hacs->explainPermission(string $permission): array`
+- `$hacs->grants(): array`
 
 Permission strings and grant keys are validated with:
 

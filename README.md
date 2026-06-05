@@ -42,7 +42,7 @@ Permission strings and grant keys are validated with:
 ## Examples
 
 - [PHP roles and groups](./examples/php/roles-and-groups.php): load direct user
-  grants and assigned group grants into ordered HACS grant sets.
+  grants and assigned group grants into a stateful HACS instance.
 
 ## Development
 

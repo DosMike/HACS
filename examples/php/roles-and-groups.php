@@ -42,38 +42,36 @@ require __DIR__ . '/framework/SQL.php';
  */
 
 $userId = 42;
-$grants = HACSDatabaseGrants::grantsForUser($userId);
+$hacs = HACSDatabaseGrants::forUser($userId);
 
-echo HACS::explain($grants, HACS::makePermission('project.read')) . PHP_EOL;
-echo HACS::explain($grants, HACS::makePermission('project.delete')) . PHP_EOL;
-echo HACS::explain($grants, HACS::makePermission('project.delete.owner')) . PHP_EOL;
+echo $hacs->explain('project.read') . PHP_EOL;
+echo $hacs->explain('project.delete') . PHP_EOL;
+echo $hacs->explain('project.delete.owner') . PHP_EOL;
 
 final class HACSDatabaseGrants
 {
     /**
-     * Loads a user's ordered grant sets from the database.
+     * Loads a user's grants from the database.
      *
      * The order matters. HACS evaluates all matching grants and uses the most
      * specific match. When specificity ties, later same-specificity grant sets
      * win. This example sorts lower priority first and higher priority later.
      *
-     * Group grants are loaded first, then direct user grants. That means direct
-     * user grants override group grants when permission specificity ties.
-     *
-     * @return list<array<string, string>>
+     * Group grants are loaded first, then direct user grants. Because HACS
+     * preprocesses exact grant keys, direct user grants override group grants
+     * with the same permission key.
      */
-    public static function grantsForUser(int $userId): array
+    public static function forUser(int $userId): HACS
     {
-        return [
-            ...self::groupGrantSetsForUser($userId),
-            ...self::directGrantSetsForUser($userId),
-        ];
+        $hacs = new HACS();
+
+        self::loadGroupGrants($hacs, $userId);
+        self::loadDirectGrants($hacs, $userId);
+
+        return $hacs;
     }
 
-    /**
-     * @return list<array<string, string>>
-     */
-    private static function groupGrantSetsForUser(int $userId): array
+    private static function loadGroupGrants(HACS $hacs, int $userId): void
     {
         $rows = self::selectRows(
             'user_permission_groups AS upg',
@@ -92,13 +90,10 @@ final class HACSDatabaseGrants
             ],
         );
 
-        return self::grantSetsFromRows($rows);
+        self::addRows($hacs, $rows);
     }
 
-    /**
-     * @return list<array<string, string>>
-     */
-    private static function directGrantSetsForUser(int $userId): array
+    private static function loadDirectGrants(HACS $hacs, int $userId): void
     {
         $rows = self::selectRows(
             'permission_grants',
@@ -107,7 +102,7 @@ final class HACSDatabaseGrants
             '`priority` ASC, `permission_key` ASC',
         );
 
-        return self::grantSetsFromRows($rows);
+        self::addRows($hacs, $rows);
     }
 
     /**
@@ -134,18 +129,13 @@ final class HACSDatabaseGrants
 
     /**
      * @param list<array<string, string>> $rows
-     * @return list<array<string, string>>
      */
-    private static function grantSetsFromRows(array $rows): array
+    private static function addRows(HACS $hacs, array $rows): void
     {
-        $grantSets = [];
-
         foreach ($rows as $row) {
-            $grantSets[] = HACS::defineGrants([
+            $hacs->addGrants([
                 $row['permission_key'] => $row['grant_value'],
             ]);
         }
-
-        return $grantSets;
     }
 }
