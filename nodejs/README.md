@@ -5,7 +5,7 @@ Hierarchical Authorization Capability helpers for TypeScript and React.
 ## Install
 
 ```sh
-npm install hacs
+npm install @dosmike/hacs
 ```
 
 React is a peer dependency when using the React entry point.
@@ -16,16 +16,16 @@ Permissions are dot-separated keys. A broader grant applies to deeper
 permissions unless a more specific matching grant overrides it.
 
 ```ts
-import { defineGrants, makePermission, test } from 'hacs';
+import { PermissionGrants, Permission, test } from 'hacs';
 
-const grants = defineGrants({
+const grants = PermissionGrants({
   project: 'allow',
   'project.delete': 'deny',
   'project.delete.owner': 'allow',
 });
 
-test(grants, makePermission('project.delete.owner')); // true
-test(grants, makePermission('project.delete.member')); // false
+test(grants, Permission('project.delete.owner')); // true
+test(grants, Permission('project.delete.member')); // false
 ```
 
 Grant values can be:
@@ -35,7 +35,7 @@ Grant values can be:
 - `inherit`: skips this grant and falls back to the next matching grant.
 
 Boolean values are also accepted as aliases: `true` is `allow`, and `false` is
-`deny`.
+`deny`, as is `undefined` or `null` for `inherit`.
 
 The root grant key `*` matches every permission. If no grant matches, HACS
 denies by default.
@@ -44,23 +44,23 @@ denies by default.
 
 ```ts
 import {
-  can,
-  defineGrants,
+  test,
   explain,
   explainPermission,
-  makePermission,
-  permissionKey,
+  Permission,
+  PermissionGrants,
+  mergeGrants,
   resolvePermission,
-  test,
-} from 'hacs';
+} from '@dosmike/hacs';
 ```
 
-Permission strings are tagged at runtime with `permissionKey(...)` for grant
-keys and `makePermission(...)` for checked permissions. Both validators require
-this syntax:
+Permission strings are tagged for `PermissionGrants(...)` and and `Permission(...)`.
+
+While a permission generall follows the following syntax, grants also allow '*' as wildcard for all permissions:
 
 ```txt
-^(?:\*|[a-zA-Z0-9]+(?:\.[a-zA-Z0-9]+)*)$
+permission = node ( '.' node )*
+node = [a-zA-Z0-9]+
 ```
 
 ### Typed Checked Permissions
@@ -74,10 +74,10 @@ type AppPermission =
   | 'project.read'
   | 'project.delete.owner';
 
-const permission = makePermission<AppPermission>('project.delete.owner');
+const permission = Permission<AppPermission>('project.delete.owner');
 
 // Type error:
-makePermission<AppPermission>('project.delete.member');
+Permission<AppPermission>('project.delete.member');
 ```
 
 ### `test(grants, permission)`
@@ -162,3 +162,7 @@ npm run build
 
 The package builds with `tsup`, tests with `vitest`, and exposes separate core
 and React entry points.
+
+## Examples
+
+- [Loading grants with Axios](../examples/nodejs/load-grants-with-axios.ts)

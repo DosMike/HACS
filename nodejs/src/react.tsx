@@ -1,9 +1,10 @@
 import {
-  type CheckPermission,
-  type PermissionGrantInput,
-  type PermissionGrant,
-  can as checkCan,
+  Permission,
+  PermissionGrants,
+  test,
   explain,
+  mergeGrants,
+  UncheckedPermissionGrants,
 } from './index';
 import {
   type ReactNode,
@@ -15,46 +16,39 @@ import {
 } from 'react';
 
 export interface HACSProviderProps extends PropsWithChildren {
-  grants: PermissionGrantInput;
+  grants: PermissionGrants | UncheckedPermissionGrants;
 }
 
-export interface UseHACSResult<Permission extends string = string> {
-  can: (permission: CheckPermission<Permission>) => boolean;
-  explain: (permission: CheckPermission<Permission>) => string;
-  grants: readonly PermissionGrant[];
+export interface UseHACSResult<P extends string = string> {
+  can: (permission: Permission<P>) => boolean;
+  explain: (permission: Permission<P>) => string;
+  grants: PermissionGrants;
 }
 
-const HACSContext = createContext<readonly PermissionGrant[]>([]);
+const HACSContext = createContext<PermissionGrants>({});
 
 export function HACSProvider({ grants, children }: HACSProviderProps) {
-  const parentGrants = useContext(HACSContext);
-  const ownGrants = useMemo(() => normalizeGrants(grants), [grants]);
-  const combinedGrants = useMemo(
-    () => [...parentGrants, ...ownGrants],
-    [parentGrants, ownGrants],
-  );
-
-  return <HACSContext.Provider value={combinedGrants}>{children}</HACSContext.Provider>;
+  const checked = useMemo(()=>PermissionGrants(grants), [grants]);
+  return <HACSContext.Provider value={checked}>{children}</HACSContext.Provider>;
 }
 
-export function useHACS<Permission extends string = string>(
-  grants: PermissionGrantInput = {},
-): UseHACSResult<Permission> {
+export function useHACS<P extends string = string>(
+  grants: PermissionGrants | UncheckedPermissionGrants = {},
+): UseHACSResult<P> {
   const contextGrants = useContext(HACSContext);
-  const localGrants = useMemo(() => normalizeGrants(grants), [grants]);
   const allGrants = useMemo(
-    () => [...contextGrants, ...localGrants],
-    [contextGrants, localGrants],
+    () => mergeGrants([contextGrants, PermissionGrants(grants)]),
+    [contextGrants, grants],
   );
 
   return {
     grants: allGrants,
     can: useCallback(
-      (permission: CheckPermission<Permission>) => checkCan(allGrants, permission),
+      (permission: Permission<P>) => test(allGrants, permission),
       [allGrants],
     ),
     explain: useCallback(
-      (permission: CheckPermission<Permission>) => explain(allGrants, permission),
+      (permission: Permission<P>) => explain(allGrants, permission),
       [allGrants],
     ),
   };
@@ -67,14 +61,4 @@ export interface IfProps extends PropsWithChildren {
 
 export function If({ test, fallback = null, children }: IfProps) {
   return test ? <>{children}</> : <>{fallback}</>;
-}
-
-export const HACSIf = If;
-
-function normalizeGrants(grants: PermissionGrantInput): readonly PermissionGrant[] {
-  return isGrantList(grants) ? grants : [grants];
-}
-
-function isGrantList(grants: PermissionGrantInput): grants is readonly PermissionGrant[] {
-  return Array.isArray(grants);
 }

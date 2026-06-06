@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach } from 'vitest';
-import { makePermission, defineGrants } from './index';
+import { Permission, PermissionGrants } from './index';
 import { HACSProvider, If, useHACS } from './react';
 
 afterEach(() => {
@@ -21,8 +21,8 @@ describe('react exports', () => {
 describe('HACSProvider and useHACS', () => {
   it('allows components to check provider grants', () => {
     render(
-      <HACSProvider grants={defineGrants({ project: 'allow' })}>
-        <PermissionProbe permission="project.read" />
+      <HACSProvider grants={PermissionGrants({ project: 'allow' })}>
+        <PermissionProbe permission={Permission("project.read")} />
       </HACSProvider>,
     );
 
@@ -31,9 +31,9 @@ describe('HACSProvider and useHACS', () => {
 
   it('combines provider grants with local hook grants', () => {
     render(
-      <HACSProvider grants={defineGrants({ project: 'allow', 'project.delete': 'deny' })}>
+      <HACSProvider grants={{ project: 'allow', 'project.delete': 'deny' }}>
         <PermissionProbe
-          localGrants={defineGrants({ 'project.delete.owner': 'allow' })}
+          localGrants={{ 'project.delete.owner': 'allow' }}
           permission="project.delete.owner"
         />
       </HACSProvider>,
@@ -42,23 +42,11 @@ describe('HACSProvider and useHACS', () => {
     expect(screen.getByText('allowed')).toBeTruthy();
   });
 
-  it('lets nested providers add more specific grants', () => {
-    render(
-      <HACSProvider grants={defineGrants({ project: 'allow', 'project.delete': 'deny' })}>
-        <HACSProvider grants={defineGrants({ 'project.delete.owner': 'allow' })}>
-          <PermissionProbe permission="project.delete.owner" />
-        </HACSProvider>
-      </HACSProvider>,
-    );
-
-    expect(screen.getByText('allowed')).toBeTruthy();
-  });
-
   it('lets later same-key local grants override provider grants', () => {
     render(
-      <HACSProvider grants={defineGrants({ 'project.delete': 'deny' })}>
+      <HACSProvider grants={{ 'project.delete': 'deny' }}>
         <PermissionProbe
-          localGrants={defineGrants({ 'project.delete': 'allow' })}
+          localGrants={{ 'project.delete': 'allow' }}
           permission="project.delete"
         />
       </HACSProvider>,
@@ -67,21 +55,21 @@ describe('HACSProvider and useHACS', () => {
     expect(screen.getByText('allowed')).toBeTruthy();
   });
 
-  it('exposes all merged grant sets to consumers', () => {
+  it('does not merge context provider grants automatically', () => {
     render(
-      <HACSProvider grants={defineGrants({ project: 'allow' })}>
-        <HACSProvider grants={defineGrants({ 'project.delete': 'deny' })}>
-          <GrantCount localGrants={defineGrants({ 'project.delete.owner': 'allow' })} />
+      <HACSProvider grants={{ project: 'allow' }}>
+        <HACSProvider grants={{ 'project.delete': 'deny' }}>
+          <GrantCount localGrants={{ 'project.delete.owner': 'allow' }} />
         </HACSProvider>
       </HACSProvider>,
     );
 
-    expect(screen.getByText('3')).toBeTruthy();
+    expect(screen.getByText('2')).toBeTruthy();
   });
 
   it('returns explanations from the merged grant set', () => {
     render(
-      <HACSProvider grants={defineGrants({ project: 'allow', 'project.delete': 'deny' })}>
+      <HACSProvider grants={{ project: 'allow', 'project.delete': 'deny' }}>
         <ExplanationProbe permission="project.delete.owner" />
       </HACSProvider>,
     );
@@ -122,7 +110,7 @@ interface PermissionProbeProps {
 function PermissionProbe({ permission, localGrants }: PermissionProbeProps) {
   const { can } = useHACS(localGrants);
 
-  return <span>{can(makePermission(permission)) ? 'allowed' : 'denied'}</span>;
+  return <span>{can(Permission(permission)) ? 'allowed' : 'denied'}</span>;
 }
 
 interface ExplanationProbeProps {
@@ -132,7 +120,7 @@ interface ExplanationProbeProps {
 function ExplanationProbe({ permission }: ExplanationProbeProps) {
   const hacs = useHACS();
 
-  return <span>{hacs.explain(makePermission(permission))}</span>;
+  return <span>{hacs.explain(Permission(permission))}</span>;
 }
 
 interface GrantCountProps {
@@ -142,5 +130,5 @@ interface GrantCountProps {
 function GrantCount({ localGrants }: GrantCountProps) {
   const { grants } = useHACS(localGrants);
 
-  return <span>{grants.length}</span>;
+  return <span>{Object.keys(grants).length}</span>;
 }

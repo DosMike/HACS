@@ -1,148 +1,130 @@
-export type PermissionKey = string & { readonly __permissionKeyBrand: 'PermissionKey' };
-export type CheckPermission<Permission extends string = string> = Permission & {
-  readonly __checkPermissionBrand: 'CheckPermission';
-};
-export type PermissionValue = 'allow' | 'deny' | 'inherit';
-export type PermissionGrant = Partial<Record<PermissionKey, PermissionValue | boolean>>;
-export type PermissionGrantInput = PermissionGrant | readonly PermissionGrant[];
+export type Permission<P extends string = string> = P & { readonly __HACSPerm: 'HACSPermission' };
+export type PermissionGrantScope = string & { readonly __HACSScope: 'HACSPermissionScope' };
+export type PermissionGrantAccess = 'allow' | 'deny' | 'inherit';
 
-export interface PermissionMatch {
-  key: PermissionKey;
-  value: PermissionValue;
+export type PermissionGrants = Record<PermissionGrantScope, PermissionGrantAccess>;
+export interface PermissionGrant {
+  readonly scope: PermissionGrantScope;
+  readonly access: PermissionGrantAccess;
 }
 
-export interface PermissionExplanation<Permission extends string = string> {
-  allowed: boolean;
-  permission: CheckPermission<Permission>;
-  matched: PermissionMatch | null;
-  considered: PermissionMatch[];
-  reason: string;
+export type UncheckedPermissionGrants = Record<string, boolean | PermissionGrantAccess | null | undefined>;
+
+export interface PermissionExplanation<P extends string = string> {
+  readonly allowed: boolean;
+  readonly permission: Permission<P>;
+  readonly matched: PermissionGrant | null;
+  readonly considered: PermissionGrant[];
+  readonly reason: string;
 }
 
-const PERMISSION_PATTERN = /^(?:\*|[a-zA-Z0-9]+(?:\.[a-zA-Z0-9]+)*)$/;
+const PERMISSION_PATTERN = /^[a-zA-Z0-9]+(?:\.[a-zA-Z0-9]+)*$/;
+const PERMISSION_GRANT_PATTERN = /^(?:\*|[a-zA-Z0-9]+(?:\.[a-zA-Z0-9]+)*)$/;
 
-export function permissionKey(value: string): PermissionKey {
-  return normalizePermission(value) as PermissionKey;
-}
 
-export function makePermission<Permission extends string = string>(
-  value: Permission,
-): CheckPermission<Permission> {
-  return normalizePermission(value) as CheckPermission<Permission>;
-}
-
-export function permissionGrant(grants: Record<string, PermissionValue | boolean>): PermissionGrant {
-  const normalizedGrants: PermissionGrant = {};
+export function PermissionGrants(grants: UncheckedPermissionGrants): PermissionGrants {
+  const normalizedGrants: PermissionGrants = {};
 
   for (const [key, value] of Object.entries(grants)) {
-    normalizedGrants[permissionKey(key)] = normalizeGrantValue(value);
+    normalizedGrants[normalizeGrantScope(key)] = normalizeGrantAccess(value);
   }
 
   return normalizedGrants;
 }
 
-export const defineGrants = permissionGrant;
-
-export function test<Permission extends string = string>(
-  grants: PermissionGrantInput,
-  permission: CheckPermission<Permission>,
-): boolean {
-  return resolvePermission(grants, permission)?.value === 'allow';
+export function Permission<P extends string = string>(permission: P): Permission<P> {
+  return normalizePermission(permission);
 }
 
-export function can<Permission extends string = string>(
-  grants: PermissionGrantInput,
-  permission: CheckPermission<Permission>,
+export function test<P extends string = string>(
+  grants: PermissionGrants,
+  permission: Permission<P>,
 ): boolean {
-  return test(grants, permission);
+  return resolvePermission(grants, permission)?.access === 'allow';
 }
 
-export function explain<Permission extends string = string>(
-  grants: PermissionGrantInput,
-  permission: CheckPermission<Permission>,
+export function explain<P extends string = string>(
+  grants: PermissionGrants,
+  permission: Permission<P>,
 ): string {
   const explanation = explainPermission(grants, permission);
 
   if (explanation.matched) {
-    return [
-      `'${explanation.permission}' is ${explanation.allowed ? 'allowed' : 'denied'}.`,
-      `Matched '${explanation.matched.key}' with value '${explanation.matched.value}'.`,
-      explanation.reason,
-    ].join(' ');
+    return `'${explanation.permission}' is ${explanation.allowed ? 'allowed' : 'denied'}. Matched '${explanation.matched.scope}' with value '${explanation.matched.access}'. ${explanation.reason}`;
   }
 
-  return [
-    `'${explanation.permission}' is denied.`,
-    'No matching grant was found, so the default is deny.',
-  ].join(' ');
+  return `'${explanation.permission}' is denied. No matching grant was found, so the default is deny.`;
 }
 
-export function explainPermission<Permission extends string = string>(
-  grants: PermissionGrantInput,
-  permission: CheckPermission<Permission>,
+export function explainPermission<P extends string = string>(
+  grants: PermissionGrants,
+  permission: Permission<P>,
 ): PermissionExplanation<Permission> {
-  const normalizedPermission = normalizePermission(permission) as CheckPermission<Permission>;
+  const normalizedPermission = normalizePermission(permission) as Permission<P>;
   const considered = getMatchingGrants(grants, normalizedPermission);
   const matched = considered[considered.length - 1] ?? null;
-  const allowed = matched?.value === 'allow';
+  const allowed = matched?.access === 'allow';
 
   return {
     allowed,
     permission: normalizedPermission,
     matched,
     considered,
-    reason: matched
-      ? 'The most specific matching grant wins.'
-      : 'Permissions without an explicit grant are denied.',
+    reason: matched ? 'The most specific matching grant wins.' : 'Permissions without an explicit grant are denied.',
   };
 }
 
-export function resolvePermission<Permission extends string = string>(
-  grants: PermissionGrantInput,
-  permission: CheckPermission<Permission>,
-): PermissionMatch | null {
-  const normalizedPermission = normalizePermission(permission) as CheckPermission<Permission>;
+export function resolvePermission<P extends string = string>(
+  grants: PermissionGrants,
+  permission: Permission<P>,
+): PermissionGrant | null {
+  const normalizedPermission = normalizePermission(permission) as Permission<P>;
   const considered = getMatchingGrants(grants, normalizedPermission);
   return considered[considered.length - 1] ?? null;
 }
 
 function getMatchingGrants(
-  grants: PermissionGrantInput,
+  grants: PermissionGrants,
   permission: string,
-): PermissionMatch[] {
-  return flattenGrants(grants)
-    .filter((grant): grant is PermissionMatch => {
-      if (grant.value === 'inherit') {
+): PermissionGrant[] {
+  return Object.entries(grants)
+    .map(([scope, access]): PermissionGrant => {
+      return {
+        scope: normalizeGrantScope(scope),
+        access: normalizeGrantAccess(access),
+      };
+    })
+    .filter((grant) => {
+      if (grant.access === 'inherit') {
         return false;
       }
 
-      return grant.key === '*' || permission === grant.key || permission.startsWith(`${grant.key}.`);
+      return grant.scope === '*' || permission === grant.scope || permission.startsWith(`${grant.scope}.`);
     })
-    .sort((left, right) => specificity(left.key) - specificity(right.key));
+    .sort((left, right) => specificity(left.scope) - specificity(right.scope));
 }
 
-function flattenGrants(grants: PermissionGrantInput): PermissionMatch[] {
-  const grantList = Array.isArray(grants) ? grants : [grants];
-
-  return grantList.flatMap((grantSet) => {
-    const matches: PermissionMatch[] = [];
-
-    for (const [key, value] of Object.entries(grantSet)) {
-      if (value === undefined) {
+export function mergeGrants(grantSets: (PermissionGrants|UncheckedPermissionGrants)[]): PermissionGrants {
+  if (grantSets.length === 0) {
+    return {};
+  }
+  if (grantSets.length === 1) {
+    return PermissionGrants(grantSets[0]!);
+  }
+  return grantSets.reduce<PermissionGrants>((merged, grants) => {
+    for (const [key, value] of Object.entries(grants)) {
+      const scope = normalizeGrantScope(key);
+      const access = normalizeGrantAccess(value);
+      if (access === 'inherit') {
         continue;
       }
-
-      matches.push({
-        key: normalizeGrantKey(key),
-        value: normalizeGrantValue(value),
-      });
-    }
-
-    return matches;
-  });
+      merged[scope] = access;
+    };
+    return merged;
+  }, {});
 }
 
-function normalizePermission(permission: string): string {
+function normalizePermission<P extends string = string>(permission: string): Permission<P> {
   const normalized = permission;
 
   if (!PERMISSION_PATTERN.test(normalized)) {
@@ -151,30 +133,31 @@ function normalizePermission(permission: string): string {
     );
   }
 
-  return normalized;
+  return normalized as Permission<P>;
 }
 
-function normalizeGrantKey(key: string): PermissionKey {
+function normalizeGrantScope(key: string): PermissionGrantScope {
   const normalized = key;
 
-  if (!PERMISSION_PATTERN.test(normalized)) {
+  if (!PERMISSION_GRANT_PATTERN.test(normalized)) {
     throw new Error(
       `Permission grant key must match ${PERMISSION_PATTERN.source}: ${JSON.stringify(key)}.`,
     );
   }
 
-  return normalized as PermissionKey;
+  return normalized as PermissionGrantScope;
 }
 
-function normalizeGrantValue(value: unknown): PermissionValue {
+function normalizeGrantAccess(value: unknown): PermissionGrantAccess {
+  if (value === undefined || value === null) {
+    return 'inherit';
+  }
   if (value === true) {
     return 'allow';
   }
-
   if (value === false) {
     return 'deny';
   }
-
   if (value !== 'allow' && value !== 'deny' && value !== 'inherit') {
     throw new Error(`Invalid permission grant value: ${String(value)}.`);
   }

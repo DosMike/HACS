@@ -41,6 +41,8 @@ Permission strings and grant keys are validated with:
 
 ## Examples
 
+- [Node.js loading grants with Axios](./examples/nodejs/load-grants-with-axios.ts):
+  fetch grant rows from an API and convert them into a HACS grant object.
 - [PHP roles and groups](./examples/php/roles-and-groups.php): load direct user
   grants and assigned group grants into a stateful HACS instance.
 
