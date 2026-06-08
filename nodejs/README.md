@@ -1,6 +1,6 @@
 # HACS Node.js
 
-Hierarchical Authorization Capability helpers for TypeScript and React.
+Hierarchical Authorization Capability System helpers for TypeScript and React.
 
 ## Install
 
@@ -16,7 +16,7 @@ Permissions are dot-separated keys. A broader grant applies to deeper
 permissions unless a more specific matching grant overrides it.
 
 ```ts
-import { PermissionGrants, Permission, test } from 'hacs';
+import { Permission, PermissionGrants, test } from '@dosmike/hacs';
 
 const grants = PermissionGrants({
   project: 'allow',
@@ -35,7 +35,7 @@ Grant values can be:
 - `inherit`: skips this grant and falls back to the next matching grant.
 
 Boolean values are also accepted as aliases: `true` is `allow`, and `false` is
-`deny`, as is `undefined` or `null` for `inherit`.
+`deny`. `undefined` and `null` are treated as `inherit`.
 
 The root grant key `*` matches every permission. If no grant matches, HACS
 denies by default.
@@ -54,14 +54,18 @@ import {
 } from '@dosmike/hacs';
 ```
 
-Permission strings are tagged for `PermissionGrants(...)` and and `Permission(...)`.
+Permission strings are tagged with `Permission(...)` before checking. Grant
+objects are normalized with `PermissionGrants(...)`.
 
-While a permission generall follows the following syntax, grants also allow '*' as wildcard for all permissions:
+Permissions follow this syntax:
 
 ```txt
 permission = node ( '.' node )*
 node = [a-zA-Z0-9]+
 ```
+
+Grant keys use the same syntax, with one addition: `*` is allowed as the root
+grant and matches every permission.
 
 ### Typed Checked Permissions
 
@@ -85,12 +89,8 @@ Permission<AppPermission>('project.delete.member');
 Returns `true` when the most specific matching grant is `allow`.
 
 ```ts
-test(defineGrants({ project: 'allow' }), makePermission('project.update.owner'));
+test(PermissionGrants({ project: 'allow' }), Permission('project.update.owner'));
 ```
-
-### `can(grants, permission)`
-
-Alias for `test`.
 
 ### `resolvePermission(grants, permission)`
 
@@ -105,16 +105,21 @@ Returns a human-readable explanation of the permission decision.
 Returns a structured explanation object with the decision, matched grant, and
 considered grants.
 
+### `mergeGrants(grantSets)`
+
+Combines grant sets in order. Later grants with the same key override earlier
+grants unless the later value is `inherit`.
+
 ## React API
 
 ```tsx
-import { HACSProvider, If, useHACS } from 'hacs/react';
-import { defineGrants, makePermission } from 'hacs';
+import { Permission, PermissionGrants } from '@dosmike/hacs';
+import { HACSProvider, If, useHACS } from '@dosmike/hacs/react';
 
 function App() {
   return (
     <HACSProvider
-      grants={defineGrants({
+      grants={PermissionGrants({
         project: 'allow',
         'project.delete': 'deny',
       })}
@@ -125,21 +130,25 @@ function App() {
 }
 
 function ProjectActions() {
-  const { can } = useHACS(defineGrants({
+  const { can } = useHACS(PermissionGrants({
     'project.delete.owner': 'allow',
   }));
 
   return (
-    <If test={can(makePermission('project.delete.owner'))}>
+    <If test={can(Permission('project.delete.owner'))}>
       <button type="button">Delete project</button>
     </If>
   );
 }
 ```
 
-Providers can be nested. Grants from inner providers and `useHACS(localGrants)`
-are evaluated together with outer grants, and the most specific matching grant
-wins.
+`HACSProvider` accepts normalized grants or raw grant objects. `useHACS()`
+checks against the nearest provider grants. `useHACS(localGrants)` merges the
+local grants after the provider grants, so same-key local grants override the
+provider value unless the local value is `inherit`.
+
+Nested providers replace the context for their children. They do not
+automatically merge with outer providers.
 
 The hook can also be typed with the same checked permission collection:
 
@@ -148,7 +157,7 @@ type AppPermission = 'project.read' | 'project.delete.owner';
 
 const { can } = useHACS<AppPermission>();
 
-can(makePermission<AppPermission>('project.delete.owner'));
+can(Permission<AppPermission>('project.delete.owner'));
 ```
 
 ## Development
